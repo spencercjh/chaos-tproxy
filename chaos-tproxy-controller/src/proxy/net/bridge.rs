@@ -205,7 +205,7 @@ impl NetEnv {
             .to_string();
         let cmd = ip_netns(
             &self.netns,
-            arp_set(&net_ip_str, &veth4_mac, &self.bridge2),
+            arp_set(net_ip_str.as_str(), &veth4_mac, &self.bridge2),
         );
         tracing::info!("Executing command: {:?}", cmd);
         execute_all(vec![cmd])?;

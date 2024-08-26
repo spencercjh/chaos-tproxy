@@ -12,7 +12,7 @@ impl fmt::Debug for DebugMacAddr {
         write!(
             f,
             "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-            self.0 .0, self.0 .1, self.0 .2, self.0 .3, self.0 .4, self.0 .5
+            self.0.0, self.0.1, self.0.2, self.0.3, self.0.4, self.0.5
         )
     }
 }
@@ -38,11 +38,6 @@ pub fn gratuitous_arp(interface: Interface, ip_addr: Ipv4Addr, mac_addr: MacAddr
         MacAddr(0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
         ip_addr,
         Operation::ArpRequest,
-    );
-
-    tracing::info!(
-        "Gratuitous ARP request created: {:?}",
-        DebugArpMessage(arp_request)
     );
 
     match arp_request.send(&interface.clone()) {
