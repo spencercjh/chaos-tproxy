@@ -2,10 +2,10 @@ use std::convert::TryFrom;
 use std::net::Ipv4Addr;
 
 use anyhow::{anyhow, Error};
-use pnet::ipnetwork::IpNetwork;
 use chaos_tproxy_proxy::raw_config::{RawConfig as ProxyRawConfig, Role};
-use crate::proxy::net::bridge::get_default_interface;
+use pnet::ipnetwork::IpNetwork;
 
+use crate::proxy::net::bridge::get_default_interface;
 use crate::raw_config::{RawConfig, RawRole};
 
 #[derive(Debug, Clone, Eq, PartialEq)]

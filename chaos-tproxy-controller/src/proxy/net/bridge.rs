@@ -72,6 +72,8 @@ impl NetEnv {
     }
 
     pub async fn setenv_bridge(&self, handle: &mut Handle) -> Result<()> {
+        tracing::info!("Setting up network environment bridge");
+
         let Gateway {
             mac_addr: gateway_mac,
             ip_addr: gateway_ip,
@@ -114,11 +116,14 @@ impl NetEnv {
             ip_netns(&self.netns, ip_link_set_master(&self.veth3, &self.bridge2)),
             ip_netns(&self.netns, ip_link_set_up("lo")),
         ];
+
+        for cmd in &cmdvv {
+            tracing::info!("Executing command: {:?}", cmd);
+        }
         execute_all(cmdvv)?;
 
-        execute_all_with_log_error(vec![ip_address("del", &self.ip, &self.device)])?;
-
         let cmdvv = vec![
+            ip_address("del", &self.ip, &self.device),
             ip_address("add", &self.ip, &self.veth4),
             arp_set(&gateway_ip_s, &gateway_mac_s, &self.veth1),
             arp_set(&gateway_ip_s, &gateway_mac_s, &self.veth4),
@@ -183,7 +188,12 @@ impl NetEnv {
                 ],
             ),
         ];
+
+        for cmd in &cmdvv {
+            tracing::info!("Executing command: {:?}", cmd);
+        }
         execute_all(cmdvv)?;
+
         let interfaces = pnet::datalink::interfaces();
         let veth4_mac = interfaces
             .iter()
@@ -192,10 +202,12 @@ impl NetEnv {
             .mac
             .context(format!("mac {} not found", self.veth4.clone()))?
             .to_string();
-        execute_all(vec![ip_netns(
+        let cmd = ip_netns(
             &self.netns,
             arp_set(&net.ip().to_string(), &veth4_mac, &self.bridge2),
-        )])?;
+        );
+        tracing::info!("Executing command: {:?}", cmd);
+        execute_all(vec![cmd])?;
 
         let all_routes = get_routes_noblock(handle).await?;
 
@@ -219,10 +231,13 @@ impl NetEnv {
             })
             .collect();
         del_routes_noblock(handle, kernel_routes).await?;
+        tracing::info!("Network environment bridge setup complete");
         Ok(())
     }
 
     pub async fn clear_bridge(&self, handle: &mut Handle) -> Result<()> {
+        tracing::info!("Clearing network environment bridge");
+
         let restore_dns = "cp /etc/resolv.conf.bak /etc/resolv.conf";
 
         let cmdvv = vec![
@@ -232,6 +247,10 @@ impl NetEnv {
             bash_c(restore_dns),
             clear_ebtables(),
         ];
+
+        for cmd in &cmdvv {
+            tracing::info!("Executing command: {:?}", cmd);
+        }
         execute_all_with_log_error(cmdvv)?;
 
         let routes = get_routes_noblock(handle).await.unwrap_or_else(|e| {
@@ -257,6 +276,7 @@ impl NetEnv {
         } = try_get_default_gateway()?;
 
         if gateway_mac.octets().iter().all(|&i| i == 0) {
+            tracing::info!("Gateway MAC address is all zeros, skipping ARP setup");
             return Ok(());
         }
 
@@ -264,7 +284,13 @@ impl NetEnv {
         let gateway_mac = gateway_mac.to_string();
 
         let cmdvv = vec![arp_set(&gateway_ip, &gateway_mac, self.device.as_str())];
+
+        for cmd in &cmdvv {
+            tracing::info!("Executing command: {:?}", cmd);
+        }
         execute_all_with_log_error(cmdvv)?;
+
+        tracing::info!("Network environment bridge cleared successfully");
         Ok(())
     }
 }

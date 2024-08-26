@@ -59,7 +59,9 @@ impl Proxy {
     }
 
     pub async fn exec(&mut self, config: ProxyRawConfig) -> anyhow::Result<()> {
-        tracing::info!("transferring proxy raw config {:?}", &config);
+        tracing::info!("Executing proxy with config: {:?}", config);
+
+        tracing::info!("Creating UDS server");
         let uds_server = UdsDataServer::new(config.clone(), self.opt.ipc_path.clone());
         let listener = uds_server.bind()?;
 
@@ -74,6 +76,7 @@ impl Proxy {
         let opt = self.opt.clone();
         let exe_path = match std::env::current_exe() {
             Err(e) => {
+                tracing::error!("Failed to get current exe path: {:?}", e);
                 return Err(anyhow::anyhow!(
                     "failed to get current exe path,error : {:?}",
                     e
@@ -82,7 +85,8 @@ impl Proxy {
             Ok(path) => path,
         };
 
-        tracing::info!("Network device name {}", self.net_env.device.clone());
+        tracing::info!("Network device name: {}", self.net_env.device.clone());
+        tracing::info!("Setting network with config: {:?}", config);
         set_net(
             &mut self.rtnl_handle,
             &self.net_env,
@@ -105,15 +109,18 @@ impl Proxy {
             .arg("--proxy")
             .arg(format!("--ipc-path={}", opt.ipc_path.to_str().unwrap()));
 
+        tracing::info!("Executing command: {:?}", proxy);
+
         let rx = self.rx.take().unwrap();
         self.task = Some(tokio::spawn(async move {
-            tracing::info!("Proxy executor Starting proxy.");
+            tracing::info!("Proxy executor starting proxy.");
             let mut process = match proxy.stdin(Stdio::piped()).spawn() {
                 Ok(process) => {
-                    tracing::info!("Proxy executor Proxy is running.");
+                    tracing::info!("Proxy executor proxy is running.");
                     process
                 }
                 Err(e) => {
+                    tracing::error!("Failed to exec sub proxy: {:?}", e);
                     return Err(anyhow::anyhow!("failed to exec sub proxy : {:?}", e));
                 }
             };
@@ -129,26 +136,50 @@ impl Proxy {
             };
             Ok(())
         }));
+        tracing::info!("Proxy execution setup complete");
         Ok(())
     }
 
     pub async fn stop(&mut self) -> anyhow::Result<()> {
+        tracing::info!("Stopping proxy");
+
         if let Some(task) = self.task.take() {
+            tracing::info!("Sending stop signal to proxy task");
             if let Some(sender) = self.sender.take() {
                 let _ = sender.send(());
             };
-            let _ = self.net_env.clear_bridge(&mut self.rtnl_handle).await;
-            let _ = task.await?;
+
+            tracing::info!("Clearing network bridge");
+            let clear_result = self.net_env.clear_bridge(&mut self.rtnl_handle).await;
+            if let Err(ref e) = clear_result {
+                tracing::error!("Failed to clear network bridge: {:?}", e);
+            }
+
+            tracing::info!("Awaiting proxy task to finish");
+            let task_result = task.await;
+            if let Err(ref e) = task_result {
+                tracing::error!("Proxy task finished with error: {:?}", e);
+            }
+        } else {
+            tracing::info!("No proxy task to stop");
         }
+
+        tracing::info!("Proxy stopped successfully");
         Ok(())
     }
 
     pub async fn reload(&mut self, config: ProxyRawConfig) -> anyhow::Result<()> {
+        tracing::info!("Reloading proxy with config: {:?}", config);
+
+        tracing::info!("Stopping current proxy");
         self.stop().await?;
         if config.proxy_ports.is_none() {
+            tracing::info!("No proxy ports specified, skipping reload");
             return Ok(());
         }
+
         if self.task.is_none() {
+            tracing::info!("No existing proxy task, creating a new one");
             let mut new = Self::new(self.opt.verbose).await;
             self.net_env = new.net_env;
             self.opt = new.opt;
@@ -156,12 +187,17 @@ impl Proxy {
             self.rx = new.rx.take();
         }
 
+        tracing::info!("Executing new proxy configuration");
         match self.exec(config).await {
             Err(e) => {
+                tracing::error!("Failed to execute new proxy configuration: {:?}", e);
                 self.net_env.clear_bridge(&mut self.rtnl_handle).await?;
                 Err(e)
             }
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                tracing::info!("Proxy reloaded successfully");
+                Ok(())
+            }
         }
     }
 }

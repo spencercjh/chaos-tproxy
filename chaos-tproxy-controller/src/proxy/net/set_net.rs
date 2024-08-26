@@ -17,11 +17,15 @@ pub async fn set_net(
     listen_port: u16,
     safe: bool,
 ) -> anyhow::Result<()> {
+    tracing::info!("Setting up network environment");
     net_env.setenv_bridge(handle).await?;
     let port = listen_port.to_string();
     let restore_dns = "cp /etc/resolv.conf.bak /etc/resolv.conf";
     let device_interface = get_interface(net_env.veth4.clone()).unwrap();
     let device_mac = device_interface.mac.unwrap().to_string();
+
+    tracing::info!("Device interface: {:?}", device_interface);
+    tracing::info!("Device MAC address: {}", device_mac);
 
     let arp_interface = Interface::new_by_name(net_env.veth4.clone().as_str()).unwrap();
     gratuitous_arp(
@@ -31,21 +35,22 @@ pub async fn set_net(
     );
 
     if let Some(ref proxy_ports) = proxy_ports {
+        tracing::info!("Setting iptables with proxy ports: {}", proxy_ports);
         execute_all(set_iptables(net_env, Some(proxy_ports), &port, &device_mac))?;
     } else {
+        tracing::info!("Setting iptables without proxy ports");
         execute_all(set_iptables(net_env, None, &port, &device_mac))?;
     }
 
     if safe {
+        tracing::info!("Setting safe iptables rules");
         execute_all(set_iptables_safe(net_env, &device_mac))?;
     }
     let _ = execute(bash_c(restore_dns));
 
     let gateway = default_net::get_default_gateway().map_err(|e| anyhow!(e))?;
+    tracing::info!("Default gateway: {:?}", gateway);
     try_ping(gateway.ip_addr).await;
 
     Ok(())
 }
-
-#[cfg(target_os = "windows")]
-pub fn set_env() {}

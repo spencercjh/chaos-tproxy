@@ -6,10 +6,17 @@ pub fn set_iptables<'a>(
     listen_port: &'a str,
     device_mac: &'a str,
 ) -> Vec<Vec<&'a str>> {
+    tracing::info!(
+        "Setting iptables with net_env: {:?}, proxy_ports: {:?}, listen_port: {}, device_mac: {}",
+        net_env,
+        proxy_ports,
+        listen_port,
+        device_mac
+    );
+
     let cmdv = match proxy_ports {
-        Some(proxy_ports) => ip_netns(
-            &net_env.netns,
-            vec![
+        Some(proxy_ports) => {
+            let cmd = vec![
                 "iptables",
                 "-t",
                 "mangle",
@@ -27,11 +34,12 @@ pub fn set_iptables<'a>(
                 "0x1/0x1",
                 "--on-port",
                 listen_port,
-            ],
-        ),
-        None => ip_netns(
-            &net_env.netns,
-            vec![
+            ];
+            tracing::info!("Executing command: {:?}", cmd);
+            ip_netns(&net_env.netns, cmd)
+        }
+        None => {
+            let cmd = vec![
                 "iptables",
                 "-t",
                 "mangle",
@@ -45,18 +53,20 @@ pub fn set_iptables<'a>(
                 "0x1/0x1",
                 "--on-port",
                 listen_port,
-            ],
-        ),
+            ];
+            tracing::info!("Executing command: {:?}", cmd);
+            ip_netns(&net_env.netns, cmd)
+        }
     };
 
-    vec![
-        ip_netns(
-            &net_env.netns,
-            vec!["iptables", "-t", "mangle", "-N", "DIVERT"],
-        ),
-        ip_netns(
-            &net_env.netns,
-            vec![
+    let result = vec![
+        {
+            let cmd = vec!["iptables", "-t", "mangle", "-N", "DIVERT"];
+            tracing::info!("Executing command: {:?}", cmd);
+            ip_netns(&net_env.netns, cmd)
+        },
+        {
+            let cmd = vec![
                 "iptables",
                 "-t",
                 "mangle",
@@ -68,11 +78,12 @@ pub fn set_iptables<'a>(
                 "socket",
                 "-j",
                 "DIVERT",
-            ],
-        ),
-        ip_netns(
-            &net_env.netns,
-            vec![
+            ];
+            tracing::info!("Executing command: {:?}", cmd);
+            ip_netns(&net_env.netns, cmd)
+        },
+        {
+            let cmd = vec![
                 "iptables",
                 "-t",
                 "mangle",
@@ -82,16 +93,18 @@ pub fn set_iptables<'a>(
                 "MARK",
                 "--set-mark",
                 "1",
-            ],
-        ),
-        ip_netns(
-            &net_env.netns,
-            vec!["iptables", "-t", "mangle", "-A", "DIVERT", "-j", "ACCEPT"],
-        ),
+            ];
+            tracing::info!("Executing command: {:?}", cmd);
+            ip_netns(&net_env.netns, cmd)
+        },
+        {
+            let cmd = vec!["iptables", "-t", "mangle", "-A", "DIVERT", "-j", "ACCEPT"];
+            tracing::info!("Executing command: {:?}", cmd);
+            ip_netns(&net_env.netns, cmd)
+        },
         cmdv,
-        ip_netns(
-            &net_env.netns,
-            vec![
+        {
+            let cmd = vec![
                 "ebtables-legacy",
                 "-t",
                 "broute",
@@ -111,100 +124,97 @@ pub fn set_iptables<'a>(
                 "redirect",
                 "--redirect-target",
                 "DROP",
-            ],
-        ),
-        vec![
-            "ebtables",
-            "-t",
-            "nat",
-            "-A",
-            "PREROUTING",
-            "-i",
-            &net_env.device,
-            "-j",
-            "dnat",
-            "--to-dst",
-            device_mac,
-            "--dnat-target",
-            "ACCEPT",
-        ],
-    ]
+            ];
+            tracing::info!("Executing command: {:?}", cmd);
+            ip_netns(&net_env.netns, cmd)
+        },
+        {
+            let cmd = vec![
+                "ebtables",
+                "-t",
+                "nat",
+                "-A",
+                "PREROUTING",
+                "-i",
+                &net_env.device,
+                "-j",
+                "dnat",
+                "--to-dst",
+                device_mac,
+                "--dnat-target",
+                "ACCEPT",
+            ];
+            tracing::info!("Executing command: {:?}", cmd);
+            cmd
+        },
+    ];
+
+    tracing::info!("Iptables rules set: {:?}", result);
+    result
 }
 
 pub fn set_iptables_safe<'a>(net_env: &'a NetEnv, device_mac: &'a str) -> Vec<Vec<&'a str>> {
-    vec![
-        ip_netns(
-            &net_env.netns,
-            vec![
-                "iptables",
-                "-t",
-                "mangle",
-                "-I",
-                "PREROUTING",
-                "-p",
-                "tcp",
-                "--dport",
-                "81:1025",
-                "-s",
-                &net_env.ip,
-                "-j",
-                "ACCEPT",
-            ],
-        ),
-        ip_netns(
-            &net_env.netns,
-            vec![
-                "iptables",
-                "-t",
-                "mangle",
-                "-I",
-                "PREROUTING",
-                "-p",
-                "tcp",
-                "--sport",
-                "81:1025",
-                "-d",
-                &net_env.ip,
-                "-j",
-                "ACCEPT",
-            ],
-        ),
-        ip_netns(
-            &net_env.netns,
-            vec![
-                "iptables",
-                "-t",
-                "mangle",
-                "-I",
-                "PREROUTING",
-                "-p",
-                "tcp",
-                "--dport",
-                "1:81",
-                "-s",
-                &net_env.ip,
-                "-j",
-                "ACCEPT",
-            ],
-        ),
-        ip_netns(
-            &net_env.netns,
-            vec![
-                "iptables",
-                "-t",
-                "mangle",
-                "-I",
-                "PREROUTING",
-                "-p",
-                "tcp",
-                "--sport",
-                "1:81",
-                "-d",
-                &net_env.ip,
-                "-j",
-                "ACCEPT",
-            ],
-        ),
+    let cmds = vec![
+        vec![
+            "iptables",
+            "-t",
+            "mangle",
+            "-I",
+            "PREROUTING",
+            "-p",
+            "tcp",
+            "--dport",
+            "81:1025",
+            "-s",
+            &net_env.ip,
+            "-j",
+            "ACCEPT",
+        ],
+        vec![
+            "iptables",
+            "-t",
+            "mangle",
+            "-I",
+            "PREROUTING",
+            "-p",
+            "tcp",
+            "--sport",
+            "81:1025",
+            "-d",
+            &net_env.ip,
+            "-j",
+            "ACCEPT",
+        ],
+        vec![
+            "iptables",
+            "-t",
+            "mangle",
+            "-I",
+            "PREROUTING",
+            "-p",
+            "tcp",
+            "--dport",
+            "1:81",
+            "-s",
+            &net_env.ip,
+            "-j",
+            "ACCEPT",
+        ],
+        vec![
+            "iptables",
+            "-t",
+            "mangle",
+            "-I",
+            "PREROUTING",
+            "-p",
+            "tcp",
+            "--sport",
+            "1:81",
+            "-d",
+            &net_env.ip,
+            "-j",
+            "ACCEPT",
+        ],
         vec![
             "ebtables",
             "-t",
@@ -220,7 +230,15 @@ pub fn set_iptables_safe<'a>(net_env: &'a NetEnv, device_mac: &'a str) -> Vec<Ve
             "--dnat-target",
             "ACCEPT",
         ],
-    ]
+    ];
+
+    for cmd in &cmds {
+        tracing::info!("Executing command: {:?}", cmd);
+    }
+
+    cmds.into_iter()
+        .map(|cmd| ip_netns(&net_env.netns, cmd))
+        .collect()
 }
 
 pub fn clear_ebtables() -> Vec<&'static str> {
