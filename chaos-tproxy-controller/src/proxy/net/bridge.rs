@@ -88,7 +88,7 @@ impl NetEnv {
             .parse()
             .context(format!("ip {} parsed error", self.ip))?;
         let net_ip_str = net.ip().to_string();
-        let net_ip32 = net_ip_str + "/32";
+        let net_ip32 = net_ip_str.clone() + "/32";
         let rp_filter_br2 = format!("net.ipv4.conf.{}.rp_filter=0", &self.bridge2);
         let rp_filter_v2 = format!("net.ipv4.conf.{}.rp_filter=0", &self.veth2);
         let rp_filter_v3 = format!("net.ipv4.conf.{}.rp_filter=0", &self.veth3);
