@@ -45,7 +45,7 @@ pub fn gratuitous_arp(interface: Interface, ip_addr: Ipv4Addr, mac_addr: MacAddr
         DebugArpMessage(arp_request)
     );
 
-    match arp_request.send(&interface) {
+    match arp_request.send(&interface.clone()) {
         Ok(_) => tracing::info!("Gratuitous ARP sent successfully"),
         Err(e) => tracing::error!("Gratuitous ARP send failed: {}", e),
     }

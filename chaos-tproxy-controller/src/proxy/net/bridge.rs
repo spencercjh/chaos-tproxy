@@ -87,7 +87,8 @@ impl NetEnv {
             .ip
             .parse()
             .context(format!("ip {} parsed error", self.ip))?;
-        let net_ip32 = net.ip().to_string() + "/32";
+        let net_ip_str = net.ip().to_string();
+        let net_ip32 = net_ip_str + "/32";
         let rp_filter_br2 = format!("net.ipv4.conf.{}.rp_filter=0", &self.bridge2);
         let rp_filter_v2 = format!("net.ipv4.conf.{}.rp_filter=0", &self.veth2);
         let rp_filter_v3 = format!("net.ipv4.conf.{}.rp_filter=0", &self.veth3);
@@ -204,7 +205,7 @@ impl NetEnv {
             .to_string();
         let cmd = ip_netns(
             &self.netns,
-            arp_set(&net.ip().to_string(), &veth4_mac, &self.bridge2),
+            arp_set(&net_ip_str, &veth4_mac, &self.bridge2),
         );
         tracing::info!("Executing command: {:?}", cmd);
         execute_all(vec![cmd])?;
